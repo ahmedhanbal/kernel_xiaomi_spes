@@ -779,6 +779,8 @@ static bool htab_lru_map_delete_node(void *arg, struct bpf_lru_node *node)
 	return l == tgt_l;
 }
 
+static void free_htab_elem(struct bpf_htab *htab, struct htab_elem *l);
+
 static int __htab_map_lookup_and_delete_elem(struct bpf_map *map, void *key,
 					     void *value, bool is_lru_map,
 					     bool is_percpu, u64 flags)
