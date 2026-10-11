@@ -358,7 +358,6 @@ struct bpf_insn_aux_data {
 		};
 		struct {
 			enum bpf_reg_type reg_type;	/* type of pseudo_btf_id */
-			struct btf *btf;		/* BTF object for pseudo_btf_id */
 			union {
 				struct {
 					struct btf *btf;

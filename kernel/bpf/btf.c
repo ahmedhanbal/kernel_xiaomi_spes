@@ -4688,8 +4688,6 @@ errout:
 }
 #endif /* CONFIG_DEBUG_INFO_BTF_MODULES */
 
-#endif /* CONFIG_DEBUG_INFO_BTF_MODULES */
-
 struct btf *bpf_prog_get_target_btf(const struct bpf_prog *prog)
 {
 	struct bpf_prog *tgt_prog = prog->aux->dst_prog;
