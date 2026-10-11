@@ -53,21 +53,20 @@ int bpf_lsm_verify_prog(struct bpf_verifier_log *vlog,
 	return 0;
 }
 
-/* Mask for all the currently supported BPRM option flags */
-#define BPF_F_BRPM_OPTS_MASK	BPF_F_BPRM_SECUREEXEC
+#define BPF_F_BPRM_OPTS_MASK	BPF_F_BPRM_SECUREEXEC
 
 BPF_CALL_2(bpf_bprm_opts_set, struct linux_binprm *, bprm, u64, flags)
 {
-	if (flags & ~BPF_F_BRPM_OPTS_MASK)
+	if (flags & ~BPF_F_BPRM_OPTS_MASK)
 		return -EINVAL;
 
-	bprm->secureexec = (flags & BPF_F_BPRM_SECUREEXEC);
+	bprm->secureexec = !!(flags & BPF_F_BPRM_SECUREEXEC);
 	return 0;
 }
 
 BTF_ID_LIST_SINGLE(bpf_bprm_opts_set_btf_ids, struct, linux_binprm)
 
-const static struct bpf_func_proto bpf_bprm_opts_set_proto = {
+static const struct bpf_func_proto bpf_bprm_opts_set_proto = {
 	.func		= bpf_bprm_opts_set,
 	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
@@ -140,8 +139,6 @@ BTF_ID(func, bpf_lsm_bpf_prog)
 BTF_ID(func, bpf_lsm_bprm_check_security)
 BTF_ID(func, bpf_lsm_bprm_committed_creds)
 BTF_ID(func, bpf_lsm_bprm_committing_creds)
-BTF_ID(func, bpf_lsm_bprm_creds_for_exec)
-BTF_ID(func, bpf_lsm_bprm_creds_from_file)
 BTF_ID(func, bpf_lsm_capget)
 BTF_ID(func, bpf_lsm_capset)
 BTF_ID(func, bpf_lsm_cred_prepare)
@@ -177,10 +174,8 @@ BTF_ID(func, bpf_lsm_key_free)
 
 BTF_ID(func, bpf_lsm_mmap_file)
 BTF_ID(func, bpf_lsm_netlink_send)
-BTF_ID(func, bpf_lsm_path_notify)
 BTF_ID(func, bpf_lsm_release_secctx)
 BTF_ID(func, bpf_lsm_sb_alloc_security)
-BTF_ID(func, bpf_lsm_sb_eat_lsm_opts)
 BTF_ID(func, bpf_lsm_sb_kern_mount)
 BTF_ID(func, bpf_lsm_sb_mount)
 BTF_ID(func, bpf_lsm_sb_remount)
