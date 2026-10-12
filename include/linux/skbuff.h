@@ -4358,5 +4358,15 @@ static inline __wsum lco_csum(struct sk_buff *skb)
 	return csum_partial(l4_hdr, csum_start - l4_hdr, partial);
 }
 
+static inline void skb_set_redirected(struct sk_buff *skb, bool from_ingress)
+{
+#ifdef CONFIG_NET_CLS_ACT
+	skb->tc_redirected = 1;
+	skb->tc_from_ingress = from_ingress;
+	if (skb->tc_from_ingress)
+		skb->tstamp = 0;
+#endif
+}
+
 #endif	/* __KERNEL__ */
 #endif	/* _LINUX_SKBUFF_H */

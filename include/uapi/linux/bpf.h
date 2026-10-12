@@ -4358,6 +4358,12 @@ enum {
 };
 
 /* Mode for BPF_FUNC_skb_adjust_room helper. */
+/* Flags for bpf_redirect_map helper */
+enum {
+	BPF_F_BROADCAST		= (1ULL << 3),
+	BPF_F_EXCLUDE_INGRESS	= (1ULL << 4),
+};
+
 enum bpf_adj_room_mode {
 	BPF_ADJ_ROOM_NET,
 	BPF_ADJ_ROOM_MAC,
