@@ -300,6 +300,23 @@ static struct sock *inet_lhash2_lookup(struct net *net,
 	return result;
 }
 
+static inline struct sock *inet_lookup_reuseport_tcp(struct net *net,
+						     struct sock *sk,
+						     struct sk_buff *skb, int doff,
+						     __be32 saddr, __be16 sport,
+						     __be32 daddr,
+						     unsigned short hnum)
+{
+	struct sock *reuse_sk = NULL;
+	u32 phash;
+
+	if (sk->sk_reuseport) {
+		phash = inet_ehashfn(net, daddr, hnum, saddr, sport);
+		reuse_sk = reuseport_select_sock(sk, phash, skb, doff);
+	}
+	return reuse_sk;
+}
+
 static inline struct sock *inet_lookup_run_bpf(struct net *net,
 					       struct inet_hashinfo *hashinfo,
 					       struct sk_buff *skb, int doff,
@@ -317,7 +334,8 @@ static inline struct sock *inet_lookup_run_bpf(struct net *net,
 	if (no_reuseport || IS_ERR_OR_NULL(sk))
 		return sk;
 
-	reuse_sk = lookup_reuseport(net, sk, skb, saddr, sport, daddr, hnum);
+	reuse_sk = inet_lookup_reuseport_tcp(net, sk, skb, doff,
+					     saddr, sport, daddr, hnum);
 	if (reuse_sk)
 		sk = reuse_sk;
 	return sk;
@@ -340,13 +358,6 @@ struct sock *__inet_lookup_listener(struct net *net,
 	unsigned int hash2;
 	u32 phash = 0;
 
-	if (ilb->count <= 10 || !hashinfo->lhash2)
-		goto port_lookup;
-
-	/* Too many sk in the ilb bucket (which is hashed by port alone).
-	 * Try lhash2 (which is hashed by port and addr) instead.
-	 */
-
 	/* Lookup redirect from BPF */
 	if (static_branch_unlikely(&bpf_sk_lookup_enabled)) {
 		result = inet_lookup_run_bpf(net, hashinfo, skb, doff,
@@ -354,6 +365,13 @@ struct sock *__inet_lookup_listener(struct net *net,
 		if (result)
 			goto done;
 	}
+
+	if (ilb->count <= 10 || !hashinfo->lhash2)
+		goto port_lookup;
+
+	/* Too many sk in the ilb bucket (which is hashed by port alone).
+	 * Try lhash2 (which is hashed by port and addr) instead.
+	 */
 
 	hash2 = ipv4_portaddr_hash(net, daddr, hnum);
 	ilb2 = inet_lhash2_bucket(hashinfo, hash2);
