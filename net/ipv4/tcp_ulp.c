@@ -141,3 +141,12 @@ int tcp_set_ulp(struct sock *sk, const char *name)
 
 	return __tcp_set_ulp(sk, ulp_ops);
 }
+
+void tcp_update_ulp(struct sock *sk, struct proto *proto,
+		    void (*write_space)(struct sock *sk))
+{
+	struct inet_connection_sock *icsk = inet_csk(sk);
+
+	if (icsk->icsk_ulp_ops->update)
+		icsk->icsk_ulp_ops->update(sk, proto, write_space);
+}
