@@ -115,6 +115,7 @@
 #include <net/busy_poll.h>
 #include "udp_impl.h"
 #include <net/sock_reuseport.h>
+#include <linux/filter.h>
 #include <net/addrconf.h>
 #include <net/udp_tunnel.h>
 
@@ -484,7 +485,7 @@ static struct sock *udp4_lib_lookup2(struct net *net,
 /* UDP is nearly always wildcards out the wazoo, it makes no sense to try
  * harder than this. -DaveM
  */
-struct sock *__udp4_lib_lookup(struct net *net, __be32 saddr,
+static struct sock *udp4_lib_lookup_no_bpf(struct net *net, __be32 saddr,
 		__be16 sport, __be32 daddr, __be16 dport, int dif,
 		int sdif, struct udp_table *udptable, struct sk_buff *skb)
 {
@@ -547,6 +548,61 @@ begin:
 			badness = score;
 		}
 	}
+	return result;
+}
+
+static inline struct sock *udp4_lookup_run_bpf(struct net *net,
+					       struct udp_table *udptable,
+					       struct sk_buff *skb,
+					       __be32 saddr, __be16 sport,
+					       __be32 daddr, u16 hnum)
+{
+	struct sock *sk, *reuse_sk;
+	bool no_reuseport;
+
+	if (udptable != &udp_table)
+		return NULL; /* only UDP is supported */
+
+	no_reuseport = bpf_sk_lookup_run_v4(net, IPPROTO_UDP,
+					    saddr, sport, daddr, hnum, &sk);
+	if (no_reuseport || IS_ERR_OR_NULL(sk))
+		return sk;
+
+	reuse_sk = lookup_reuseport(net, sk, skb, saddr, sport, daddr, hnum);
+	if (reuse_sk)
+		sk = reuse_sk;
+	return sk;
+}
+
+/* UDP is nearly always wildcards out the wazoo, it makes no sense to try
+ * harder than this. -DaveM
+ *
+ * A connected socket wins; otherwise a BPF sk_lookup program, if any is
+ * attached to the netns, gets to override the result of the normal lookup.
+ */
+struct sock *__udp4_lib_lookup(struct net *net, __be32 saddr,
+		__be16 sport, __be32 daddr, __be16 dport, int dif,
+		int sdif, struct udp_table *udptable, struct sk_buff *skb)
+{
+	struct sock *result;
+
+	result = udp4_lib_lookup_no_bpf(net, saddr, sport, daddr, dport,
+					dif, sdif, udptable, skb);
+	if (result && result->sk_state == TCP_ESTABLISHED)
+		return result;
+
+	/* Lookup redirect from BPF */
+	if (static_branch_unlikely(&bpf_sk_lookup_enabled)) {
+		struct sock *sk;
+
+		sk = udp4_lookup_run_bpf(net, udptable, skb,
+					 saddr, sport, daddr, ntohs(dport));
+		if (sk)
+			result = sk;
+	}
+
+	if (IS_ERR(result))
+		return NULL;
 	return result;
 }
 EXPORT_SYMBOL_GPL(__udp4_lib_lookup);
@@ -1681,6 +1737,38 @@ busy_check:
 }
 EXPORT_SYMBOL(__skb_recv_udp);
 
+int udp_read_sock(struct sock *sk, read_descriptor_t *desc,
+		  sk_read_actor_t recv_actor)
+{
+	int copied = 0;
+
+	while (1) {
+		struct sk_buff *skb;
+		int err, used;
+
+		skb = skb_recv_udp(sk, 0, 1, &err);
+		if (!skb)
+			return err;
+		used = recv_actor(desc, skb, 0, skb->len);
+		if (used <= 0) {
+			if (!copied)
+				copied = used;
+			kfree_skb(skb);
+			break;
+		} else if (used <= skb->len) {
+			copied += used;
+		}
+
+		kfree_skb(skb);
+		if (!desc->count)
+			break;
+	}
+
+	return copied;
+}
+EXPORT_SYMBOL(udp_read_sock);
+
+
 /*
  * 	This should be easy, if there is something there we
  * 	return it, otherwise we block.
@@ -2731,6 +2819,10 @@ __poll_t udp_poll(struct file *file, struct socket *sock, poll_table *wait)
 	    !(sk->sk_shutdown & RCV_SHUTDOWN) && first_packet_length(sk) == -1)
 		mask &= ~(EPOLLIN | EPOLLRDNORM);
 
+	/* psock ingress_msg queue should not contain any bad checksum frames */
+	if (sk_is_readable(sk))
+		mask |= EPOLLIN | EPOLLRDNORM;
+
 	return mask;
 
 }
@@ -2777,6 +2869,9 @@ struct proto udp_prot = {
 	.unhash			= udp_lib_unhash,
 	.rehash			= udp_v4_rehash,
 	.get_port		= udp_v4_get_port,
+#ifdef CONFIG_BPF_SYSCALL
+	.psock_update_sk_prot	= udp_bpf_update_proto,
+#endif
 	.memory_allocated	= &udp_memory_allocated,
 	.sysctl_mem		= sysctl_udp_mem,
 	.sysctl_wmem_offset	= offsetof(struct net, ipv4.sysctl_udp_wmem_min),

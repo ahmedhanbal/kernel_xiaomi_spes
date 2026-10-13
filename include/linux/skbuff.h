@@ -624,6 +624,7 @@ typedef unsigned char *sk_buff_data_t;
  *	@protocol: Packet protocol from driver
  *	@destructor: Destruct function
  *	@tcp_tsorted_anchor: list structure for TCP (tp->tsorted_sent_queue)
+ *	@_sk_redir: socket redirection information for skmsg
  *	@_nfct: Associated connection, if any (with nfctinfo bits)
  *	@nf_bridge: Saved data about a bridged frame - see br_netfilter.c
  *	@skb_iif: ifindex of device we arrived on
@@ -706,6 +707,9 @@ struct sk_buff {
 			void		(*destructor)(struct sk_buff *skb);
 		};
 		struct list_head	tcp_tsorted_anchor;
+#ifdef CONFIG_NET_SOCK_MSG
+		unsigned long		_sk_redir;
+#endif
 	};
 
 #ifdef CONFIG_XFRM
@@ -4356,6 +4360,16 @@ static inline __wsum lco_csum(struct sk_buff *skb)
 	 * adjustment filled in by caller) and return result.
 	 */
 	return csum_partial(l4_hdr, csum_start - l4_hdr, partial);
+}
+
+static inline void skb_set_redirected(struct sk_buff *skb, bool from_ingress)
+{
+#ifdef CONFIG_NET_CLS_ACT
+	skb->tc_redirected = 1;
+	skb->tc_from_ingress = from_ingress;
+	if (skb->tc_from_ingress)
+		skb->tstamp = 0;
+#endif
 }
 
 #endif	/* __KERNEL__ */

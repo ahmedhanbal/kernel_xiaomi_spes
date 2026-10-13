@@ -1129,6 +1129,7 @@ struct timewait_sock_ops;
 struct inet_hashinfo;
 struct raw_hashinfo;
 struct smc_hashinfo;
+struct sk_psock;
 struct module;
 
 /*
@@ -1206,6 +1207,11 @@ struct proto {
 	void			(*unhash)(struct sock *sk);
 	void			(*rehash)(struct sock *sk);
 	int			(*get_port)(struct sock *sk, unsigned short snum);
+#ifdef CONFIG_BPF_SYSCALL
+	int			(*psock_update_sk_prot)(struct sock *sk,
+							struct sk_psock *psock,
+							bool restore);
+#endif
 
 	/* Keeping track of sockets in use */
 #ifdef CONFIG_PROC_FS
@@ -1213,7 +1219,7 @@ struct proto {
 #endif
 
 	bool			(*stream_memory_free)(const struct sock *sk);
-	bool			(*stream_memory_read)(const struct sock *sk);
+	bool			(*sock_is_readable)(struct sock *sk);
 	/* Memory pressure */
 	void			(*enter_memory_pressure)(struct sock *sk);
 	void			(*leave_memory_pressure)(struct sock *sk);
@@ -1440,6 +1446,13 @@ struct socket_alloc {
 	struct socket socket;
 	struct inode vfs_inode;
 };
+
+static inline bool sk_is_readable(struct sock *sk)
+{
+	if (sk->sk_prot->sock_is_readable)
+		return sk->sk_prot->sock_is_readable(sk);
+	return false;
+}
 
 static inline struct socket *SOCKET_I(struct inode *inode)
 {

@@ -495,7 +495,7 @@ int bpf_iter_link_attach(const union bpf_attr *attr, struct bpf_prog *prog)
 		return -EINVAL;
 
 	if (ulinfo) {
-		err = bpf_check_uarg_tail_zero(ulinfo, sizeof(linfo),
+		err = bpf_check_uarg_tail_zero(USER_BPFPTR(ulinfo), sizeof(linfo),
 					       linfo_len);
 		if (err)
 			return err;
@@ -657,6 +657,28 @@ struct bpf_prog *bpf_iter_get_info(struct bpf_iter_meta *meta, bool in_stop)
 	return iter_priv->prog;
 }
 
+const struct bpf_func_proto *
+bpf_iter_get_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
+{
+	const struct bpf_iter_target_info *tinfo;
+	const struct bpf_func_proto *fn = NULL;
+
+	mutex_lock(&targets_mutex);
+	list_for_each_entry(tinfo, &targets, list) {
+		if (tinfo->btf_id == prog->aux->attach_btf_id) {
+			const struct bpf_iter_reg *reg_info;
+
+			reg_info = tinfo->reg_info;
+			if (reg_info->get_func_proto)
+				fn = reg_info->get_func_proto(func_id, prog);
+			break;
+		}
+	}
+	mutex_unlock(&targets_mutex);
+
+	return fn;
+}
+
 int bpf_iter_run_prog(struct bpf_prog *prog, void *ctx)
 {
 	int ret;
@@ -675,3 +697,19 @@ int bpf_iter_run_prog(struct bpf_prog *prog, void *ctx)
 	 */
 	return ret == 0 ? 0 : -EAGAIN;
 }
+
+BPF_CALL_4(bpf_for_each_map_elem, struct bpf_map *, map, void *, callback_fn,
+	   void *, callback_ctx, u64, flags)
+{
+	return map->ops->map_for_each_callback(map, callback_fn, callback_ctx, flags);
+}
+
+const struct bpf_func_proto bpf_for_each_map_elem_proto = {
+	.func		= bpf_for_each_map_elem,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_CONST_MAP_PTR,
+	.arg2_type	= ARG_PTR_TO_FUNC,
+	.arg3_type	= ARG_PTR_TO_STACK_OR_NULL,
+	.arg4_type	= ARG_ANYTHING,
+};

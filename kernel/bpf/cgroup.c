@@ -1142,8 +1142,8 @@ int __cgroup_bpf_run_filter_sock_addr(struct sock *sk,
 	}
 
 	cgrp = sock_cgroup_ptr(&sk->sk_cgrp_data);
-	ret = BPF_PROG_RUN_ARRAY_FLAGS(cgrp->bpf.effective[type], &ctx,
-				       BPF_PROG_RUN, flags);
+	ret = BPF_PROG_RUN_ARRAY_CG_FLAGS(cgrp->bpf.effective[type], &ctx,
+					  BPF_PROG_RUN, flags);
 
 	return ret == 1 ? 0 : -EPERM;
 }
@@ -1901,15 +1901,41 @@ const struct bpf_verifier_ops cg_sysctl_verifier_ops = {
 const struct bpf_prog_ops cg_sysctl_prog_ops = {
 };
 
+#ifdef CONFIG_NET
+BPF_CALL_1(bpf_get_netns_cookie_sockopt, struct bpf_sockopt_kern *, ctx)
+{
+	const struct net *net = ctx ? sock_net(ctx->sk) : &init_net;
+
+	return atomic64_read(&net->net_cookie);
+}
+
+static const struct bpf_func_proto bpf_get_netns_cookie_sockopt_proto = {
+	.func		= bpf_get_netns_cookie_sockopt,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_PTR_TO_CTX_OR_NULL,
+};
+#endif
+
 static const struct bpf_func_proto *
 cg_sockopt_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 {
 	switch (func_id) {
 #ifdef CONFIG_NET
+	case BPF_FUNC_get_netns_cookie:
+		return &bpf_get_netns_cookie_sockopt_proto;
 	case BPF_FUNC_sk_storage_get:
 		return &bpf_sk_storage_get_proto;
 	case BPF_FUNC_sk_storage_delete:
 		return &bpf_sk_storage_delete_proto;
+	case BPF_FUNC_setsockopt:
+		if (prog->expected_attach_type == BPF_CGROUP_SETSOCKOPT)
+			return &bpf_sk_setsockopt_proto;
+		return NULL;
+	case BPF_FUNC_getsockopt:
+		if (prog->expected_attach_type == BPF_CGROUP_SETSOCKOPT)
+			return &bpf_sk_getsockopt_proto;
+		return NULL;
 #endif
 #ifdef CONFIG_INET
 	case BPF_FUNC_tcp_sock:

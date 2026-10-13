@@ -51,6 +51,7 @@
 #include <net/inet6_hashtables.h>
 #include <net/busy_poll.h>
 #include <net/sock_reuseport.h>
+#include <linux/filter.h>
 
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -213,7 +214,7 @@ static struct sock *udp6_lib_lookup2(struct net *net,
 }
 
 /* rcu_read_lock() must be held */
-struct sock *__udp6_lib_lookup(struct net *net,
+static struct sock *udp6_lib_lookup_no_bpf(struct net *net,
 			       const struct in6_addr *saddr, __be16 sport,
 			       const struct in6_addr *daddr, __be16 dport,
 			       int dif, int sdif, struct udp_table *udptable,
@@ -279,6 +280,77 @@ begin:
 			badness = score;
 		}
 	}
+	return result;
+}
+
+static inline struct sock *udp6_lookup_reuseport(struct net *net, struct sock *sk,
+						 struct sk_buff *skb,
+						 const struct in6_addr *saddr,
+						 __be16 sport,
+						 const struct in6_addr *daddr,
+						 unsigned int hnum)
+{
+	struct sock *reuse_sk = NULL;
+	u32 hash;
+
+	if (sk->sk_reuseport && sk->sk_state != TCP_ESTABLISHED) {
+		hash = udp6_ehashfn(net, daddr, hnum, saddr, sport);
+		reuse_sk = reuseport_select_sock(sk, hash, skb,
+						 sizeof(struct udphdr));
+	}
+	return reuse_sk;
+}
+
+static inline struct sock *udp6_lookup_run_bpf(struct net *net,
+					       struct udp_table *udptable,
+					       struct sk_buff *skb,
+					       const struct in6_addr *saddr,
+					       __be16 sport,
+					       const struct in6_addr *daddr,
+					       u16 hnum)
+{
+	struct sock *sk, *reuse_sk;
+	bool no_reuseport;
+
+	if (udptable != &udp_table)
+		return NULL; /* only UDP is supported */
+
+	no_reuseport = bpf_sk_lookup_run_v6(net, IPPROTO_UDP,
+					    saddr, sport, daddr, hnum, &sk);
+	if (no_reuseport || IS_ERR_OR_NULL(sk))
+		return sk;
+
+	reuse_sk = udp6_lookup_reuseport(net, sk, skb, saddr, sport, daddr, hnum);
+	if (reuse_sk)
+		sk = reuse_sk;
+	return sk;
+}
+
+struct sock *__udp6_lib_lookup(struct net *net,
+			       const struct in6_addr *saddr, __be16 sport,
+			       const struct in6_addr *daddr, __be16 dport,
+			       int dif, int sdif, struct udp_table *udptable,
+			       struct sk_buff *skb)
+{
+	struct sock *result;
+
+	result = udp6_lib_lookup_no_bpf(net, saddr, sport, daddr, dport,
+					dif, sdif, udptable, skb);
+	if (result && result->sk_state == TCP_ESTABLISHED)
+		return result;
+
+	/* Lookup redirect from BPF */
+	if (static_branch_unlikely(&bpf_sk_lookup_enabled)) {
+		struct sock *sk;
+
+		sk = udp6_lookup_run_bpf(net, udptable, skb,
+					 saddr, sport, daddr, ntohs(dport));
+		if (sk)
+			result = sk;
+	}
+
+	if (IS_ERR(result))
+		return NULL;
 	return result;
 }
 EXPORT_SYMBOL_GPL(__udp6_lib_lookup);
@@ -1654,6 +1726,9 @@ struct proto udpv6_prot = {
 	.unhash			= udp_lib_unhash,
 	.rehash			= udp_v6_rehash,
 	.get_port		= udp_v6_get_port,
+#ifdef CONFIG_BPF_SYSCALL
+	.psock_update_sk_prot	= udp_bpf_update_proto,
+#endif
 	.memory_allocated	= &udp_memory_allocated,
 	.sysctl_mem		= sysctl_udp_mem,
 	.sysctl_wmem_offset     = offsetof(struct net, ipv4.sysctl_udp_wmem_min),
