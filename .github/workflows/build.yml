@@ -1,0 +1,196 @@
+name: Build Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Variant to build"
+        required: true
+        default: all
+        type: choice
+        options:
+          - base
+          - suNext
+          - all
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # --------------------------
+      # Checkout kernel (shallow)
+      # --------------------------
+      - name: Checkout kernel
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      # --------------------------
+      # Install dependencies
+      # --------------------------
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison build-essential \
+            curl flex git libssl-dev \
+            python3 rsync unzip cpio \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi zip
+
+      # --------------------------
+      # Cache Clang
+      # --------------------------
+      - name: Cache Clang
+        uses: actions/cache@v3
+        with:
+          path: clang
+          key: clang-r584948
+
+      # --------------------------
+      # Setup Clang
+      # --------------------------
+      - name: Setup Clang
+        run: |
+          if [ ! -d clang/bin ]; then
+            mkdir -p clang
+            curl -L \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz \
+              | tar -xz -C clang
+          fi
+          echo "$PWD/clang/bin" >> $GITHUB_PATH
+
+      # --------------------------
+      # Build Variants
+      # --------------------------
+      - name: Build kernel
+        run: |
+          set -e
+
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export LD=ld.lld
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export KBUILD_BUILD_USER=ahmed
+          export KBUILD_BUILD_HOST=AAZ-PC
+          TARGET="${{ github.event.inputs.variant }}"
+
+          if [ "$TARGET" = "all" ]; then
+            VARIANTS=("suNext" "base")
+          else
+            VARIANTS=("$TARGET")
+          fi
+
+          DATE_TIME=$(TZ="Asia/Karachi" date +"%d%m%y-%H%M%S")
+
+          for VARIANT in "${VARIANTS[@]}"; do
+            echo "=================================="
+            echo "Building variant: $VARIANT"
+            echo "=================================="
+
+            # Reset tracked files (preserve out/, clang/, anykernel-*)
+            git reset --hard HEAD
+            git clean -fdx -e out/ -e clang/ -e 'anykernel-*/'
+            mkdir -p out
+
+            # --------------------------
+            # Branch mapping
+            # --------------------------
+            BRANCH="13.0.0-perf"
+
+            # --------------------------
+            # Clone KernelSU-Next (only for suNext)
+            # --------------------------
+            if [ "$VARIANT" = "suNext" ]; then
+              echo "Cloning KernelSU-Next..."
+              rm -rf KernelSU-Next
+              git clone https://github.com/KernelSU-Next/KernelSU-Next.git
+
+              cd KernelSU-Next
+              git checkout --force legacy
+              cd ..
+            fi
+
+            # --------------------------
+            # Defconfig
+            # --------------------------
+            make O=out vendor/spes-stock_defconfig
+
+            LOCALVERSION="-$VARIANT"
+
+            # --------------------------
+            # KernelSU Config
+            # --------------------------
+            if [ "$VARIANT" = "suNext" ]; then
+                   scripts/config --file out/.config -e CONFIG_KSU
+                   scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
+                   scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
+                   scripts/config --file out/.config -d CONFIG_KSU_DEBUG
+                   scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
+            else
+                   scripts/config --file out/.config -d CONFIG_KSU
+            fi
+            make O=out olddefconfig
+
+            # --------------------------
+            # Compile
+            # --------------------------
+            make -j$(nproc) O=out LOCALVERSION=$LOCALVERSION Image.gz-dtb dtbo.img
+
+            # --------------------------
+            # AnyKernel Packaging
+            # --------------------------
+            ANYKERNEL_DIR="anykernel-$VARIANT"
+            if [ ! -d "$ANYKERNEL_DIR" ]; then
+              git clone --depth=1 https://github.com/ahmedhanbal/anykernel "$ANYKERNEL_DIR"
+            fi
+
+            cp out/arch/arm64/boot/Image.gz-dtb "$ANYKERNEL_DIR/"
+            cp out/arch/arm64/boot/dtbo.img "$ANYKERNEL_DIR/"
+
+            sed -i "s/^kernel.string=.*/kernel.string=hanbal-perf-$VARIANT/" \
+              "$ANYKERNEL_DIR/anykernel.sh"
+
+            rm -rf "$ANYKERNEL_DIR/.git"
+
+          done
+
+      # --------------------------
+      # Save Clang Cache always
+      # --------------------------
+      - name: Save Clang Cache
+        if: always()
+        uses: actions/cache@v3
+        with:
+          path: clang
+          key: clang-r584948
+
+      # --------------------------
+      # Timestamp
+      # --------------------------
+      - name: Generate timestamp
+        id: timestamp
+        run: echo "time=$(TZ='Asia/Karachi' date +'%d%m%y-%H%M%S')" >> $GITHUB_OUTPUT
+
+      # --------------------------
+      # Upload Artifacts
+      # --------------------------
+      - name: Upload base
+        if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'all' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanbal-perf-base-${{ steps.timestamp.outputs.time }}
+          path: anykernel-base/
+
+      - name: Upload suNext
+        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'all' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanbal-perf-suNext-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNext/
