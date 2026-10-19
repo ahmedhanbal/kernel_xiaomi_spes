@@ -114,6 +114,19 @@ jobs:
 
               cd KernelSU-Next
               git checkout --force legacy
+
+              LATEST_TAG=$(git tag -l 'v[0-9]*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+              if [ -n "$LATEST_TAG" ]; then
+                LEGACY_TAG="${LATEST_TAG}-legacy"
+                echo "Latest version: $LATEST_TAG"
+                echo "Creating legacy tag: $LEGACY_TAG"
+                git tag "$LEGACY_TAG" HEAD
+              else
+                echo "Error: No vX.X.X tags found."
+                exit 1
+              fi
+
               cd ..
             fi
 
