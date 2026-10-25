@@ -19,13 +19,13 @@ jobs:
 
     steps:
       # --------------------------
-      # Checkout kernel (shallow)
+      # Checkout kernel
       # --------------------------
       - name: Checkout kernel
         uses: actions/checkout@v4
         with:
           submodules: false
-          fetch-depth: 1
+          fetch-depth: 0
 
       # --------------------------
       # Install dependencies
