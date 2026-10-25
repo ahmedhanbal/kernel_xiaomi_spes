@@ -9,8 +9,8 @@ on:
         default: all
         type: choice
         options:
-          - base
-          - suNext
+          - suNextO
+          - suNextN
           - all
 
 jobs:
@@ -82,10 +82,33 @@ jobs:
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("suNext" "base")
+            VARIANTS=("suNextO" "suNextN")
           else
             VARIANTS=("$TARGET")
           fi
+          # --------------------------
+          # Clone KernelSU-Next
+          # --------------------------
+           
+          echo "Cloning KernelSU-Next..."
+          rm -rf KernelSU-Next
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git
+
+          cd KernelSU-Next
+          git checkout --force legacy
+
+          LATEST_TAG=$(git tag -l 'v[0-9]*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          if [ -n "$LATEST_TAG" ]; then
+            LEGACY_TAG="${LATEST_TAG}-legacy"
+            echo "Latest version: $LATEST_TAG"
+            echo "Creating legacy tag: $LEGACY_TAG"
+            git tag "$LEGACY_TAG" HEAD
+          else
+            echo "Error: No vX.X.X tags found."
+            exit 1
+          fi
+          cd ..
 
           DATE_TIME=$(TZ="Asia/Karachi" date +"%d%m%y-%H%M%S")
 
@@ -103,32 +126,7 @@ jobs:
             # Branch mapping
             # --------------------------
             BRANCH="13.0.0-perf-ksun"
-
-            # --------------------------
-            # Clone KernelSU-Next (only for suNext)
-            # --------------------------
-            if [ "$VARIANT" = "suNext" ]; then
-              echo "Cloning KernelSU-Next..."
-              rm -rf KernelSU-Next
-              git clone https://github.com/KernelSU-Next/KernelSU-Next.git
-
-              cd KernelSU-Next
-              git checkout --force legacy
-
-              LATEST_TAG=$(git tag -l 'v[0-9]*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
-
-              if [ -n "$LATEST_TAG" ]; then
-                LEGACY_TAG="${LATEST_TAG}-legacy"
-                echo "Latest version: $LATEST_TAG"
-                echo "Creating legacy tag: $LEGACY_TAG"
-                git tag "$LEGACY_TAG" HEAD
-              else
-                echo "Error: No vX.X.X tags found."
-                exit 1
-              fi
-
-              cd ..
-            fi
+            
 
             # --------------------------
             # Defconfig
@@ -140,15 +138,12 @@ jobs:
             # --------------------------
             # KernelSU Config
             # --------------------------
-            if [ "$VARIANT" = "suNext" ]; then
-                   scripts/config --file out/.config -e CONFIG_KSU
-                   scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
-                   scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
-                   scripts/config --file out/.config -d CONFIG_KSU_DEBUG
-                   scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
-            else
-                   scripts/config --file out/.config -d CONFIG_KSU
-            fi
+            scripts/config --file out/.config -e CONFIG_KSU
+            scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
+            scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
+            scripts/config --file out/.config -d CONFIG_KSU_DEBUG
+            scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
+            
             make O=out olddefconfig
 
             # --------------------------
@@ -194,16 +189,16 @@ jobs:
       # --------------------------
       # Upload Artifacts
       # --------------------------
-      - name: Upload base
-        if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'all' }}
+      - name: Upload suNextO
+        if: ${{ github.event.inputs.variant == 'suNextO' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-base-${{ steps.timestamp.outputs.time }}
-          path: anykernel-base/
+          name: hanbal-perf-suNextO-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNextO/
 
-      - name: Upload suNext
-        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'all' }}
+      - name: Upload suNextN
+        if: ${{ github.event.inputs.variant == 'suNextN' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-suNext-${{ steps.timestamp.outputs.time }}
-          path: anykernel-suNext/
+          name: hanbal-perf-suNextN-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNextN/
