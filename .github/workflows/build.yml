@@ -9,8 +9,8 @@ on:
         default: all
         type: choice
         options:
-          - base
-          - suNext
+          - baseO
+          - baseN
           - all
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("suNext" "base")
+            VARIANTS=("baseO" "baseN")
           else
             VARIANTS=("$TARGET")
           fi
@@ -104,38 +104,19 @@ jobs:
             # --------------------------
             BRANCH="13.0.0-perf"
 
-            # --------------------------
-            # Clone KernelSU-Next (only for suNext)
-            # --------------------------
-            if [ "$VARIANT" = "suNext" ]; then
-              echo "Cloning KernelSU-Next..."
-              rm -rf KernelSU-Next
-              git clone https://github.com/KernelSU-Next/KernelSU-Next.git
-
-              cd KernelSU-Next
-              git checkout --force legacy
-              cd ..
+            if [ "$VARIANT" = "baseN" ]; then
+              git revert 8e16b7e0ebc4297507716098f2a902b7597943ee --no-edit
+              git revert ccc5614010cace6044e14f04de69283ea56c3e07 --no-edit
+              git revert 2b74f8d8cdcbb294daea68950da22b053e97d7be --no-edit
             fi
 
+          
             # --------------------------
             # Defconfig
             # --------------------------
             make O=out vendor/spes-stock_defconfig
 
             LOCALVERSION="-$VARIANT"
-
-            # --------------------------
-            # KernelSU Config
-            # --------------------------
-            if [ "$VARIANT" = "suNext" ]; then
-                   scripts/config --file out/.config -e CONFIG_KSU
-                   scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
-                   scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
-                   scripts/config --file out/.config -d CONFIG_KSU_DEBUG
-                   scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
-            else
-                   scripts/config --file out/.config -d CONFIG_KSU
-            fi
             make O=out olddefconfig
 
             # --------------------------
@@ -181,16 +162,16 @@ jobs:
       # --------------------------
       # Upload Artifacts
       # --------------------------
-      - name: Upload base
-        if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'all' }}
+      - name: Upload baseO
+        if: ${{ github.event.inputs.variant == 'baseO' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-base-${{ steps.timestamp.outputs.time }}
-          path: anykernel-base/
+          name: hanbal-perf-baseO-${{ steps.timestamp.outputs.time }}
+          path: anykernel-baseO/
 
-      - name: Upload suNext
-        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'all' }}
+      - name: Upload baseN
+        if: ${{ github.event.inputs.variant == 'baseN' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-suNext-${{ steps.timestamp.outputs.time }}
-          path: anykernel-suNext/
+          name: hanbal-perf-baseN-${{ steps.timestamp.outputs.time }}
+          path: anykernel-baseN/
