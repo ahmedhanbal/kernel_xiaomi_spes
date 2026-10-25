@@ -129,6 +129,8 @@ jobs:
             
             # revert old display driver commits
             if [ "$VARIANT" = "suNextN" ]; then
+              git config user.name "$(git log -1 --format='%an')"
+              git config user.email "$(git log -1 --format='%ae')"
               git revert 8e16b7e0ebc4297507716098f2a902b7597943ee --no-edit
               git revert ccc5614010cace6044e14f04de69283ea56c3e07 --no-edit
               git revert 2b74f8d8cdcbb294daea68950da22b053e97d7be --no-edit
