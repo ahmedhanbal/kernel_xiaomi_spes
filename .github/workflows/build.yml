@@ -9,8 +9,8 @@ on:
         default: all
         type: choice
         options:
-          - susNextO
-          - susNextN
+          - susNextOF
+          - susNextNF
           - all
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("susNextO" "susNextN")
+            VARIANTS=("susNextOF" "susNextNF")
           else
             VARIANTS=("$TARGET")
           fi
@@ -109,10 +109,10 @@ jobs:
             # --------------------------
             # Branch mapping
             # --------------------------
-            BRANCH="13.0.0-perf-ksusfs"
+            BRANCH="15.0.0-perf-ksusfs"
 
             # revert old display driver commits
-            if [ "$VARIANT" = "susNextN" ]; then
+            if [ "$VARIANT" = "susNextNF" ]; then
               git config user.name "$(git log -1 --format='%an')"
               git config user.email "$(git log -1 --format='%ae')"
               git revert 8e16b7e0ebc4297507716098f2a902b7597943ee --no-edit
@@ -181,16 +181,16 @@ jobs:
       # --------------------------
       # Upload Artifacts
       # --------------------------
-      - name: Upload susNextO
-        if: ${{ github.event.inputs.variant == 'susNextO' || github.event.inputs.variant == 'all' }}
+      - name: Upload susNextOF
+        if: ${{ github.event.inputs.variant == 'susNextOF' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-suNextO-${{ steps.timestamp.outputs.time }}
-          path: anykernel-susNextO/
+          name: hanbal-perf-suNextOF-${{ steps.timestamp.outputs.time }}
+          path: anykernel-susNextOF/
 
-      - name: Upload susNextN
-        if: ${{ github.event.inputs.variant == 'susNextN' || github.event.inputs.variant == 'all' }}
+      - name: Upload susNextNF
+        if: ${{ github.event.inputs.variant == 'susNextNF' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-suNextN-${{ steps.timestamp.outputs.time }}
-          path: anykernel-susNextN/
+          name: hanbal-perf-suNextNF-${{ steps.timestamp.outputs.time }}
+          path: anykernel-susNextNF/
