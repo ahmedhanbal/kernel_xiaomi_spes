@@ -9,8 +9,8 @@ on:
         default: all
         type: choice
         options:
-          - suNextO
-          - suNextN
+          - suNextOF
+          - suNextNF
           - all
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("suNextO" "suNextN")
+            VARIANTS=("suNextOF" "suNextNF")
           else
             VARIANTS=("$TARGET")
           fi
@@ -96,9 +96,6 @@ jobs:
 
           cd KernelSU-Next
           git checkout --force legacy
-          git config user.name "$(git log -1 --format='%an')"
-          git config user.email "$(git log -1 --format='%ae')"
-          git revert 165b87fa99abfe78058c4dc9df43c432e86b8011 --no-edit
 
           LATEST_TAG=$(git tag -l 'v[0-9]*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
 
@@ -128,10 +125,10 @@ jobs:
             # --------------------------
             # Branch mapping
             # --------------------------
-            BRANCH="13.0.0-perf-ksun"
+            BRANCH="15.0.0-perf-ksun"
             
             # revert old display driver commits
-            if [ "$VARIANT" = "suNextN" ]; then
+            if [ "$VARIANT" = "suNextNF" ]; then
               git config user.name "$(git log -1 --format='%an')"
               git config user.email "$(git log -1 --format='%ae')"
               git revert 8e16b7e0ebc4297507716098f2a902b7597943ee --no-edit
@@ -201,16 +198,16 @@ jobs:
       # --------------------------
       # Upload Artifacts
       # --------------------------
-      - name: Upload suNextO
-        if: ${{ github.event.inputs.variant == 'suNextO' || github.event.inputs.variant == 'all' }}
+      - name: Upload suNextOF
+        if: ${{ github.event.inputs.variant == 'suNextOF' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-suNextO-${{ steps.timestamp.outputs.time }}
-          path: anykernel-suNextO/
+          name: hanbal-perf-suNextOF-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNextOF/
 
-      - name: Upload suNextN
-        if: ${{ github.event.inputs.variant == 'suNextN' || github.event.inputs.variant == 'all' }}
+      - name: Upload suNextNF
+        if: ${{ github.event.inputs.variant == 'suNextNF' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-suNextN-${{ steps.timestamp.outputs.time }}
-          path: anykernel-suNextN/
+          name: hanbal-perf-suNextNF-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNextNF/
