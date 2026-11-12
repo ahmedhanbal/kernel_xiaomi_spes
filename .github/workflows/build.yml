@@ -9,8 +9,8 @@ on:
         default: all
         type: choice
         options:
-          - baseO
-          - baseN
+          - baseOF
+          - baseNF
           - all
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("baseO" "baseN")
+            VARIANTS=("baseOF" "baseNF")
           else
             VARIANTS=("$TARGET")
           fi
@@ -102,7 +102,7 @@ jobs:
             # --------------------------
             # Branch mapping
             # --------------------------
-            BRANCH="13.0.0-perf"
+            BRANCH="15.0.0-perf"
 
             if [ "$VARIANT" = "baseN" ]; then
               git config user.name "$(git log -1 --format='%an')"
@@ -164,16 +164,16 @@ jobs:
       # --------------------------
       # Upload Artifacts
       # --------------------------
-      - name: Upload baseO
-        if: ${{ github.event.inputs.variant == 'baseO' || github.event.inputs.variant == 'all' }}
+      - name: Upload baseOF
+        if: ${{ github.event.inputs.variant == 'baseOF' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-baseO-${{ steps.timestamp.outputs.time }}
-          path: anykernel-baseO/
+          name: hanbal-perf-baseOF-${{ steps.timestamp.outputs.time }}
+          path: anykernel-baseOF/
 
-      - name: Upload baseN
-        if: ${{ github.event.inputs.variant == 'baseN' || github.event.inputs.variant == 'all' }}
+      - name: Upload baseNF
+        if: ${{ github.event.inputs.variant == 'baseNF' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-perf-baseN-${{ steps.timestamp.outputs.time }}
-          path: anykernel-baseN/
+          name: hanbal-perf-baseNF-${{ steps.timestamp.outputs.time }}
+          path: anykernel-baseNF/
